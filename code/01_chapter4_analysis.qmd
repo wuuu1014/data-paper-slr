@@ -1,0 +1,1094 @@
+---
+title: "Chapter 4 analysis: 112-study evidence base"
+format:
+  html:
+    toc: true
+    number-sections: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Analysis setup
+
+```{r}
+# ============================================================
+# Chapter 4 reproducible analysis
+#
+# Inputs:
+#   data/SLR_112_Data_Extraction_and_Synthesis.xlsx
+#   data/EBL_Critical_Appraisal_Scores.xlsx
+#   data/Excluded_Studies_with_Reasons.xlsx
+#   data/Coding_Table.xlsx
+#   data/Reviewer_Agreement_and_Adjudication_Audit.xlsx
+#
+# Final output only:
+#   output/tables/Chapter4_Analysis_Tables.xlsx
+# ============================================================
+
+required_packages <- c(
+  "here", "readxl", "dplyr", "tidyr",
+  "stringr", "writexl"
+)
+
+missing_packages <- required_packages[
+  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+
+if (length(missing_packages) > 0) {
+  stop(
+    paste0(
+      "Install the required packages before rendering this file: ",
+      paste(missing_packages, collapse = ", ")
+    )
+  )
+}
+
+library(here)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(writexl)
+
+data_dir <- here("data")
+table_dir <- here("output", "tables")
+
+dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
+
+extraction_file <- file.path(
+  data_dir,
+  "SLR_112_Data_Extraction_and_Synthesis.xlsx"
+)
+
+ebl_file <- file.path(
+  data_dir,
+  "EBL_Critical_Appraisal_Scores.xlsx"
+)
+
+screening_file <- file.path(
+  data_dir,
+  "Excluded_Studies_with_Reasons.xlsx"
+)
+
+coding_file <- file.path(
+  data_dir,
+  "Coding_Table.xlsx"
+)
+
+reviewer_audit_file <- file.path(
+  data_dir,
+  "Reviewer_Agreement_and_Adjudication_Audit.xlsx"
+)
+
+input_files <- c(
+  extraction_file,
+  ebl_file,
+  screening_file,
+  coding_file,
+  reviewer_audit_file
+)
+
+missing_files <- input_files[!file.exists(input_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    paste0(
+      "The following input files are missing:\n",
+      paste(missing_files, collapse = "\n")
+    )
+  )
+}
+
+percent_of <- function(n, denominator) {
+  if (length(denominator) != 1 || is.na(denominator) || denominator <= 0) {
+    stop("Percentage denominator must be one positive number.")
+  }
+
+  n / denominator * 100
+}
+
+cohen_kappa <- function(reviewer_a, reviewer_b) {
+  reviewer_a <- if_else(
+    is.na(reviewer_a) | str_squish(as.character(reviewer_a)) == "",
+    "N/A",
+    str_squish(as.character(reviewer_a))
+  )
+  reviewer_b <- if_else(
+    is.na(reviewer_b) | str_squish(as.character(reviewer_b)) == "",
+    "N/A",
+    str_squish(as.character(reviewer_b))
+  )
+
+  if (length(reviewer_a) != length(reviewer_b) || length(reviewer_a) == 0) {
+    stop("Cohen's kappa requires two non-empty rating vectors of equal length.")
+  }
+
+  rating_levels <- sort(unique(c(reviewer_a, reviewer_b)))
+  agreement_table <- table(
+    factor(reviewer_a, levels = rating_levels),
+    factor(reviewer_b, levels = rating_levels)
+  )
+
+  observed_agreement <- sum(diag(agreement_table)) / sum(agreement_table)
+  expected_agreement <- sum(
+    (rowSums(agreement_table) / sum(agreement_table)) *
+      (colSums(agreement_table) / sum(agreement_table))
+  )
+
+  if (isTRUE(all.equal(expected_agreement, 1))) {
+    return(NA_real_)
+  }
+
+  (observed_agreement - expected_agreement) /
+    (1 - expected_agreement)
+}
+
+multi_value_summary <- function(data, field, denominator) {
+  data |>
+    transmute(
+      Final_ID,
+      Value = as.character(.data[[field]])
+    ) |>
+    filter(
+      !is.na(Value),
+      str_squish(Value) != ""
+    ) |>
+    separate_rows(
+      Value,
+      sep = "\\s*;\\s*"
+    ) |>
+    mutate(Value = str_squish(Value)) |>
+    filter(Value != "") |>
+    distinct(Final_ID, Value) |>
+    count(Value, name = "Studies", sort = TRUE) |>
+    mutate(
+      Percent_of_included = percent_of(Studies, denominator)
+    )
+}
+```
+
+# Import and validate the current files
+
+```{r}
+extraction <- read_excel(
+  extraction_file,
+  sheet = "Data extraction 112"
+)
+
+rq_map <- read_excel(
+  extraction_file,
+  sheet = "RQ evidence map"
+) |>
+  rename(
+    Evidence_Directness = all_of("Evidence directness"),
+    Primary_Theme = all_of("Primary theme"),
+    Correction_Maturity = all_of("Correction maturity"),
+    Evidence_Role = all_of("Evidence role")
+  )
+
+ebl <- read_excel(
+  ebl_file,
+  sheet = "Final EBL 112"
+)
+
+screening <- read_excel(
+  screening_file,
+  sheet = "Final result"
+) |>
+  rename(
+    FT_ID = all_of("FT ID"),
+    Final_ID = all_of("Final ID"),
+    Final_Decision = all_of("Final decision"),
+    Primary_EC = all_of("Primary EC"),
+    Final_Rationale = all_of("Final rationale"),
+    Full_Text_Evidence = all_of("Full-text evidence")
+  )
+
+detailed_map <- read_excel(
+  coding_file,
+  sheet = "Detailed Evidence Map"
+)
+
+study_rq_coverage <- read_excel(
+  coding_file,
+  sheet = "Study RQ Coverage"
+)
+
+finding_strategy <- read_excel(
+  coding_file,
+  sheet = "Finding Strategy Summary"
+)
+
+full_text_reviewer_audit <- read_excel(
+  reviewer_audit_file,
+  sheet = "FullText_Paired_Decisions"
+)
+
+ebl_reviewer_audit <- read_excel(
+  reviewer_audit_file,
+  sheet = "EBL_Paired_Item_Ratings"
+)
+
+ebl_adjudication_audit <- read_excel(
+  reviewer_audit_file,
+  sheet = "EBL_Adjudication_Log"
+)
+
+required_extraction_columns <- c(
+  "Final_ID", "FT_ID", "Title", "Year",
+  "Literature_Type", "Research_Object",
+  "Evidence_Directness", "Database_Sources",
+  "Methodological_Techniques", "Correction_Maturity",
+  "Primary_Theme", "Evidence_Role", "RQ_Mapping"
+)
+
+required_ebl_columns <- c(
+  "Final_ID", "Final_Status",
+  "A_Score", "B_Score", "C_Score", "D_Score",
+  "Overall_Score", "Meets_75pct"
+)
+
+required_map_columns <- c(
+  "RQ", "Finding_Strategy_ID", "Finding_Strategy_Label",
+  "Contribution_Status", "Final_ID", "Evidence_Directness",
+  "Correction_Maturity", "EBL_Status",
+  "EBL_Overall_Score", "EBL_Meets_75pct",
+  "Evidence_Role", "Evidence_Quotation"
+)
+
+required_full_text_audit_columns <- c(
+  "FT_ID", "Reviewer_A_Decision", "Reviewer_B_Decision",
+  "Eligibility_Only_Comparable", "Final_Adjudication"
+)
+
+required_ebl_audit_columns <- c(
+  "Final_ID", "Item", "Reviewer_A_Rating", "Reviewer_B_Rating",
+  "Final_Adjudication", "Adjudication_Required"
+)
+
+required_adjudication_columns <- c(
+  "Final_ID", "Item", "Reviewer_A_Rating", "Reviewer_B_Rating",
+  "Final_Adjudication"
+)
+
+check_columns <- function(data, required, data_name) {
+  missing <- setdiff(required, names(data))
+
+  if (length(missing) > 0) {
+    stop(
+      paste0(
+        data_name,
+        " is missing required columns: ",
+        paste(missing, collapse = ", ")
+      )
+    )
+  }
+}
+
+check_columns(
+  extraction,
+  required_extraction_columns,
+  "Data extraction 112"
+)
+
+check_columns(
+  ebl,
+  required_ebl_columns,
+  "Final EBL 112"
+)
+
+check_columns(
+  detailed_map,
+  required_map_columns,
+  "Detailed Evidence Map"
+)
+
+check_columns(
+  full_text_reviewer_audit,
+  required_full_text_audit_columns,
+  "FullText_Paired_Decisions"
+)
+
+check_columns(
+  ebl_reviewer_audit,
+  required_ebl_audit_columns,
+  "EBL_Paired_Item_Ratings"
+)
+
+check_columns(
+  ebl_adjudication_audit,
+  required_adjudication_columns,
+  "EBL_Adjudication_Log"
+)
+
+extraction_ids <- sort(unique(extraction$Final_ID))
+ebl_ids <- sort(unique(ebl$Final_ID))
+coding_ids <- sort(unique(detailed_map$Final_ID))
+
+included_screening_ids <- screening |>
+  filter(Final_Decision == "Include") |>
+  pull(Final_ID) |>
+  unique() |>
+  sort()
+
+rq_map_pairs <- rq_map |>
+  transmute(
+    Final_ID = as.character(Final_ID),
+    RQ = str_squish(as.character(RQ))
+  ) |>
+  filter(
+    Final_ID %in% extraction_ids,
+    RQ %in% paste0("RQ", 1:5)
+  ) |>
+  distinct(Final_ID, RQ)
+
+coverage_pairs <- study_rq_coverage |>
+  transmute(
+    Final_ID = as.character(Final_ID),
+    RQ = str_squish(as.character(RQ))
+  ) |>
+  filter(
+    Final_ID %in% extraction_ids,
+    RQ %in% paste0("RQ", 1:5)
+  ) |>
+  distinct(Final_ID, RQ)
+
+detailed_pairs <- detailed_map |>
+  transmute(
+    Final_ID = as.character(Final_ID),
+    RQ = str_squish(as.character(RQ))
+  ) |>
+  filter(
+    Final_ID %in% extraction_ids,
+    RQ %in% paste0("RQ", 1:5)
+  ) |>
+  distinct(Final_ID, RQ)
+
+valid_contribution_statuses <- c(
+  "Core contributing evidence",
+  "Contextual/supporting evidence"
+)
+
+n_included <- n_distinct(extraction$Final_ID)
+n_full_text <- nrow(screening)
+n_excluded <- sum(
+  screening$Final_Decision == "Exclude",
+  na.rm = TRUE
+)
+ebl_threshold <- 0.75
+
+audit_checks <- tibble(
+  Check = c(
+    "Included-study IDs are present and unique",
+    "EBL IDs match extraction IDs",
+    "Included screening IDs match extraction IDs",
+    "All full-text records have a final decision",
+    "Detailed-map IDs match extraction IDs",
+    "RQ-map pairs match study-coverage pairs",
+    "Detailed-map pairs match study-coverage pairs",
+    "Every evidence assignment has a valid contribution status"
+  ),
+  Observed = c(
+    sprintf(
+      "%d records; %d unique non-missing IDs",
+      nrow(extraction),
+      n_distinct(extraction$Final_ID, na.rm = TRUE)
+    ),
+    sprintf("%d EBL IDs; %d extraction IDs", length(ebl_ids), length(extraction_ids)),
+    sprintf("%d included screening IDs; %d extraction IDs", length(included_screening_ids), length(extraction_ids)),
+    sprintf("%d of %d decisions populated", sum(!is.na(screening$Final_Decision) & str_squish(screening$Final_Decision) != ""), n_full_text),
+    sprintf("%d detailed-map IDs; %d extraction IDs", length(coding_ids), length(extraction_ids)),
+    sprintf("%d RQ-map pairs; %d coverage pairs", nrow(rq_map_pairs), nrow(coverage_pairs)),
+    sprintf("%d detailed-map pairs; %d coverage pairs", nrow(detailed_pairs), nrow(coverage_pairs)),
+    sprintf("%d assignments checked", nrow(detailed_map))
+  ),
+  Status = c(
+    if_else(
+      nrow(extraction) == n_distinct(extraction$Final_ID, na.rm = TRUE) &&
+        !any(is.na(extraction$Final_ID)),
+      "PASS", "FAIL"
+    ),
+    if_else(identical(extraction_ids, ebl_ids), "PASS", "FAIL"),
+    if_else(identical(extraction_ids, included_screening_ids), "PASS", "FAIL"),
+    if_else(
+      all(!is.na(screening$Final_Decision) & str_squish(screening$Final_Decision) != ""),
+      "PASS", "FAIL"
+    ),
+    if_else(identical(extraction_ids, coding_ids), "PASS", "FAIL"),
+    if_else(
+      nrow(anti_join(rq_map_pairs, coverage_pairs, by = c("Final_ID", "RQ"))) == 0 &&
+        nrow(anti_join(coverage_pairs, rq_map_pairs, by = c("Final_ID", "RQ"))) == 0,
+      "PASS", "FAIL"
+    ),
+    if_else(
+      nrow(anti_join(detailed_pairs, coverage_pairs, by = c("Final_ID", "RQ"))) == 0 &&
+        nrow(anti_join(coverage_pairs, detailed_pairs, by = c("Final_ID", "RQ"))) == 0,
+      "PASS", "FAIL"
+    ),
+    if_else(
+      all(detailed_map$Contribution_Status %in% valid_contribution_statuses),
+      "PASS", "FAIL"
+    )
+  )
+)
+
+print(audit_checks)
+
+if (any(audit_checks$Status == "FAIL")) {
+  stop("Input audit failed. Inspect the printed audit results.")
+}
+```
+
+# Full-text screening results
+
+```{r}
+full_text_decisions <- screening |>
+  count(
+    Final_Decision,
+    name = "Reports"
+  ) |>
+  mutate(
+    Percent_of_full_text = percent_of(Reports, n_full_text)
+  ) |>
+  arrange(
+    factor(
+      Final_Decision,
+      levels = c(
+        "Include",
+        "Exclude",
+        "Not obtained"
+      )
+    )
+  )
+
+exclusion_reasons <- screening |>
+  filter(Final_Decision == "Exclude") |>
+  mutate(
+    Primary_EC = if_else(
+      is.na(Primary_EC) | str_squish(Primary_EC) == "",
+      "Not specified",
+      str_squish(Primary_EC)
+    )
+  ) |>
+  count(
+    Primary_EC,
+    name = "Reports",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_excluded = percent_of(Reports, n_excluded)
+  )
+
+print(full_text_decisions)
+print(exclusion_reasons)
+```
+
+# Characteristics of the 112 included studies
+
+```{r}
+evidence_directness <- extraction |>
+  count(
+    Evidence_Directness,
+    name = "Studies",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+literature_types <- extraction |>
+  count(
+    Literature_Type,
+    name = "Studies",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+primary_themes <- extraction |>
+  count(
+    Primary_Theme,
+    name = "Studies",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+correction_maturity <- extraction |>
+  count(
+    Correction_Maturity,
+    name = "Studies",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+evidence_roles <- extraction |>
+  count(
+    Evidence_Role,
+    name = "Studies",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+publication_years <- extraction |>
+  filter(!is.na(Year)) |>
+  count(
+    Year,
+    name = "Studies"
+  ) |>
+  arrange(Year)
+
+research_objects <- multi_value_summary(
+  extraction,
+  "Research_Object",
+  n_included
+)
+
+database_sources <- multi_value_summary(
+  extraction,
+  "Database_Sources",
+  n_included
+)
+
+methodological_techniques <- multi_value_summary(
+  extraction,
+  "Methodological_Techniques",
+  n_included
+)
+
+print(evidence_directness)
+print(primary_themes)
+print(correction_maturity)
+```
+
+# RQ1-RQ5 coverage and directness
+
+```{r}
+directness_levels <- c(
+  "Direct Data Paper / Data Journal",
+  "Adjacent research-data",
+  "Infrastructure / mechanism"
+)
+
+rq_evidence <- rq_map |>
+  mutate(
+    Final_ID = as.character(Final_ID),
+    RQ = str_squish(as.character(RQ)),
+    Evidence_Directness = str_squish(
+      as.character(Evidence_Directness)
+    )
+  ) |>
+  filter(
+    str_detect(Final_ID, "^S\\d{3}$"),
+    RQ %in% paste0("RQ", 1:5)
+  ) |>
+  distinct(
+    Final_ID,
+    RQ,
+    Evidence_Directness,
+    .keep_all = TRUE
+  )
+
+rq_conflicts <- rq_evidence |>
+  distinct(Final_ID, RQ, Evidence_Directness) |>
+  count(
+    Final_ID,
+    RQ,
+    name = "Directness_categories"
+  ) |>
+  filter(Directness_categories > 1)
+
+if (nrow(rq_conflicts) > 0) {
+  print(rq_conflicts)
+  stop("Conflicting evidence-directness categories were found. Inspect the printed results.")
+}
+
+rq_coverage <- rq_evidence |>
+  group_by(RQ) |>
+  summarise(
+    Studies = n_distinct(Final_ID),
+    Percent_of_included = percent_of(Studies, n_included),
+    Direct = sum(
+      Evidence_Directness == directness_levels[1]
+    ),
+    Adjacent = sum(
+      Evidence_Directness == directness_levels[2]
+    ),
+    Infrastructure = sum(
+      Evidence_Directness == directness_levels[3]
+    ),
+    .groups = "drop"
+  ) |>
+  arrange(RQ)
+
+rq_coverage_reference <- coverage_pairs |>
+  count(RQ, name = "Coverage_Studies")
+
+rq_coverage_check <- rq_coverage |>
+  full_join(
+    rq_coverage_reference,
+    by = "RQ"
+  ) |>
+  mutate(
+    Count_Check = if_else(
+      !is.na(Studies) &
+        !is.na(Coverage_Studies) &
+        Studies == Coverage_Studies,
+      "PASS",
+      "FAIL"
+    ),
+    Directness_Total = Direct + Adjacent + Infrastructure,
+    Directness_Check = if_else(
+      Studies == Directness_Total,
+      "PASS",
+      "FAIL"
+    )
+  )
+
+if (
+  any(rq_coverage_check$Count_Check == "FAIL") ||
+    any(rq_coverage_check$Directness_Check == "FAIL")
+) {
+  print(rq_coverage_check)
+  stop("RQ coverage audit failed. Inspect the printed audit results.")
+}
+
+rq_directness_long <- rq_evidence |>
+  count(
+    RQ,
+    Evidence_Directness,
+    name = "Studies"
+  ) |>
+  complete(
+    RQ = paste0("RQ", 1:5),
+    Evidence_Directness = directness_levels,
+    fill = list(Studies = 0)
+  ) |>
+  group_by(RQ) |>
+  mutate(
+    RQ_Total = sum(Studies),
+    Share_of_RQ = Studies / RQ_Total * 100
+  ) |>
+  ungroup()
+
+print(rq_coverage)
+```
+
+# EBL appraisal results
+
+```{r}
+ebl_scorable <- ebl |>
+  filter(
+    Final_Status == "Scorable",
+    !is.na(Overall_Score)
+  )
+
+n_ebl_scorable <- nrow(ebl_scorable)
+n_ebl_meets_threshold <- sum(
+  ebl_scorable$Overall_Score >= ebl_threshold,
+  na.rm = TRUE
+)
+
+ebl_status <- ebl |>
+  count(
+    Final_Status,
+    name = "Studies",
+    sort = TRUE
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+ebl_domain_summary <- ebl_scorable |>
+  select(
+    A_Score,
+    B_Score,
+    C_Score,
+    D_Score,
+    Overall_Score
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "Domain_code",
+    values_to = "Score"
+  ) |>
+  mutate(
+    Domain = recode(
+      Domain_code,
+      A_Score = "A. Population / Sample",
+      B_Score = "B. Data Collection",
+      C_Score = "C. Study Design",
+      D_Score = "D. Results",
+      Overall_Score = "Overall"
+    ),
+    Score_pct = as.numeric(Score) * 100
+  ) |>
+  filter(!is.na(Score_pct)) |>
+  group_by(Domain) |>
+  summarise(
+    N = n(),
+    Mean_pct = mean(Score_pct),
+    Median_pct = median(Score_pct),
+    SD = sd(Score_pct),
+    Meets_75_n = sum(Score_pct >= ebl_threshold * 100),
+    Meets_75_pct = Meets_75_n / N * 100,
+    .groups = "drop"
+  ) |>
+  mutate(
+    Domain = factor(
+      Domain,
+      levels = c(
+        "A. Population / Sample",
+        "B. Data Collection",
+        "C. Study Design",
+        "D. Results",
+        "Overall"
+      )
+    )
+  ) |>
+  arrange(Domain)
+
+ebl_quality_bands <- ebl |>
+  mutate(
+    Quality_Band = case_when(
+      Final_Status != "Scorable" |
+        is.na(Overall_Score) ~
+        "Conceptual/not fully scorable",
+      Overall_Score >= ebl_threshold ~
+        "Scorable: >=75%",
+      TRUE ~
+        "Scorable: <75%"
+    )
+  ) |>
+  count(
+    Quality_Band,
+    name = "Studies"
+  ) |>
+  mutate(
+    Percent_of_included = percent_of(Studies, n_included)
+  )
+
+print(ebl_domain_summary)
+print(ebl_quality_bands)
+```
+
+# Detailed S7 evidence map
+
+```{r}
+contribution_summary <- detailed_map |>
+  count(
+    RQ,
+    Contribution_Status,
+    name = "Assignments"
+  ) |>
+  left_join(
+    detailed_map |>
+      group_by(
+        RQ,
+        Contribution_Status
+      ) |>
+      summarise(
+        Unique_Studies = n_distinct(Final_ID),
+        .groups = "drop"
+      ),
+    by = c(
+      "RQ",
+      "Contribution_Status"
+    )
+  ) |>
+  arrange(
+    RQ,
+    Contribution_Status
+  )
+
+code_level_evidence <- detailed_map |>
+  group_by(
+    RQ,
+    Finding_Strategy_ID,
+    Finding_Strategy_Label,
+    Contribution_Status
+  ) |>
+  summarise(
+    Assignments = n(),
+    Unique_Studies = n_distinct(Final_ID),
+    Direct_Studies = n_distinct(
+      Final_ID[
+        Evidence_Directness ==
+          "Direct Data Paper / Data Journal"
+      ]
+    ),
+    Adjacent_Studies = n_distinct(
+      Final_ID[
+        Evidence_Directness ==
+          "Adjacent research-data"
+      ]
+    ),
+    Infrastructure_Studies = n_distinct(
+      Final_ID[
+        Evidence_Directness ==
+          "Infrastructure / mechanism"
+      ]
+    ),
+    .groups = "drop"
+  ) |>
+  arrange(
+    RQ,
+    Finding_Strategy_ID,
+    Contribution_Status
+  )
+
+rq4_strategies <- finding_strategy |>
+  filter(RQ == "RQ4") |>
+  arrange(Finding_Strategy_ID)
+
+rq5_priorities <- finding_strategy |>
+  filter(RQ == "RQ5") |>
+  arrange(Finding_Strategy_ID)
+
+detailed_codes <- detailed_map |>
+  distinct(RQ, Finding_Strategy_ID)
+
+strategy_codes <- finding_strategy |>
+  distinct(RQ, Finding_Strategy_ID)
+
+core_assignments <- sum(
+  detailed_map$Contribution_Status == "Core contributing evidence",
+  na.rm = TRUE
+)
+
+contextual_assignments <- sum(
+  detailed_map$Contribution_Status == "Contextual/supporting evidence",
+  na.rm = TRUE
+)
+
+map_checks <- tibble(
+  Check = c(
+    "S7 study IDs match included-study IDs",
+    "Core and contextual assignments partition all S7 assignments",
+    "Detailed-map pairs match study-coverage pairs",
+    "Detailed-map codes match finding-strategy codes"
+  ),
+  Observed = c(
+    sprintf("%d S7 IDs; %d included-study IDs", length(coding_ids), length(extraction_ids)),
+    sprintf("%d core + %d contextual = %d assignments", core_assignments, contextual_assignments, nrow(detailed_map)),
+    sprintf("%d detailed-map pairs; %d coverage pairs", nrow(detailed_pairs), nrow(coverage_pairs)),
+    sprintf("%d detailed-map codes; %d strategy codes", nrow(detailed_codes), nrow(strategy_codes))
+  ),
+  Status = c(
+    if_else(identical(coding_ids, extraction_ids), "PASS", "FAIL"),
+    if_else(
+      core_assignments + contextual_assignments == nrow(detailed_map) &&
+        all(detailed_map$Contribution_Status %in% valid_contribution_statuses),
+      "PASS", "FAIL"
+    ),
+    if_else(
+      nrow(anti_join(detailed_pairs, coverage_pairs, by = c("Final_ID", "RQ"))) == 0 &&
+        nrow(anti_join(coverage_pairs, detailed_pairs, by = c("Final_ID", "RQ"))) == 0,
+      "PASS", "FAIL"
+    ),
+    if_else(
+      nrow(anti_join(detailed_codes, strategy_codes, by = c("RQ", "Finding_Strategy_ID"))) == 0 &&
+        nrow(anti_join(strategy_codes, detailed_codes, by = c("RQ", "Finding_Strategy_ID"))) == 0,
+      "PASS", "FAIL"
+    )
+  )
+)
+
+if (any(map_checks$Status == "FAIL")) {
+  stop("S7 evidence-map audit failed. Inspect the printed audit results.")
+}
+
+print(contribution_summary)
+print(rq4_strategies)
+print(rq5_priorities)
+```
+
+# Reviewer agreement and adjudication
+
+```{r}
+agreement_summary <- function(data, scope, reviewer_a_column, reviewer_b_column) {
+  reviewer_a <- if_else(
+    is.na(data[[reviewer_a_column]]) |
+      str_squish(as.character(data[[reviewer_a_column]])) == "",
+    "N/A",
+    str_squish(as.character(data[[reviewer_a_column]]))
+  )
+  reviewer_b <- if_else(
+    is.na(data[[reviewer_b_column]]) |
+      str_squish(as.character(data[[reviewer_b_column]])) == "",
+    "N/A",
+    str_squish(as.character(data[[reviewer_b_column]]))
+  )
+
+  tibble(
+    Scope = scope,
+    Judgements = length(reviewer_a),
+    Agreements = sum(reviewer_a == reviewer_b),
+    Agreement_pct = round(mean(reviewer_a == reviewer_b) * 100, 1),
+    Cohens_kappa = round(cohen_kappa(reviewer_a, reviewer_b), 3)
+  )
+}
+
+full_text_agreement <- bind_rows(
+  agreement_summary(
+    full_text_reviewer_audit,
+    "All full-text reports",
+    "Reviewer_A_Decision",
+    "Reviewer_B_Decision"
+  ),
+  agreement_summary(
+    full_text_reviewer_audit |>
+      filter(
+        str_to_lower(str_squish(Eligibility_Only_Comparable)) == "yes"
+      ),
+    "Eligibility-only comparable reports",
+    "Reviewer_A_Decision",
+    "Reviewer_B_Decision"
+  )
+)
+
+ebl_agreement <- agreement_summary(
+  ebl_reviewer_audit,
+  "All paired EBL item judgements",
+  "Reviewer_A_Rating",
+  "Reviewer_B_Rating"
+)
+
+normalise_audit_rating <- function(rating) {
+  if_else(
+    is.na(rating) | str_squish(as.character(rating)) == "",
+    "N/A",
+    str_squish(as.character(rating))
+  )
+}
+
+ebl_adjudication_classified <- ebl_adjudication_audit |>
+  transmute(
+    Reviewer_A_Rating = normalise_audit_rating(Reviewer_A_Rating),
+    Reviewer_B_Rating = normalise_audit_rating(Reviewer_B_Rating),
+    Final_Adjudication = normalise_audit_rating(Final_Adjudication)
+  ) |>
+  mutate(
+    Adjudication_Outcome = case_when(
+      Final_Adjudication == Reviewer_A_Rating ~
+        "Final agrees with Reviewer A",
+      Final_Adjudication == Reviewer_B_Rating ~
+        "Final agrees with Reviewer B",
+      TRUE ~
+        "Final differs from both initial ratings"
+    )
+  )
+
+adjudication_levels <- c(
+  "Final agrees with Reviewer A",
+  "Final agrees with Reviewer B",
+  "Final differs from both initial ratings"
+)
+
+ebl_adjudication_summary <- ebl_adjudication_classified |>
+  count(
+    Adjudication_Outcome,
+    name = "Items"
+  ) |>
+  complete(
+    Adjudication_Outcome = adjudication_levels,
+    fill = list(Items = 0)
+  ) |>
+  mutate(
+    Adjudication_Outcome = factor(
+      Adjudication_Outcome,
+      levels = adjudication_levels
+    ),
+    Percent_of_adjudicated = round(
+      percent_of(Items, nrow(ebl_adjudication_audit)),
+      1
+    )
+  ) |>
+  arrange(Adjudication_Outcome) |>
+  mutate(Adjudication_Outcome = as.character(Adjudication_Outcome))
+
+adjudication_required_n <- sum(
+  str_to_lower(str_squish(ebl_reviewer_audit$Adjudication_Required)) == "yes",
+  na.rm = TRUE
+)
+
+if (adjudication_required_n != nrow(ebl_adjudication_audit)) {
+  stop(
+    paste0(
+      "EBL adjudication audit mismatch: ",
+      adjudication_required_n,
+      " paired-item disagreements but ",
+      nrow(ebl_adjudication_audit),
+      " adjudication-log rows."
+    )
+  )
+}
+
+print(full_text_agreement)
+print(ebl_agreement)
+print(ebl_adjudication_summary)
+```
+
+# Export final Chapter 4 tables
+
+```{r}
+chapter4_tables <- list(
+  # Methods and PRISMA results
+  "01_FullText_Decisions" = full_text_decisions,
+  "02_Exclusion_Reasons" = exclusion_reasons,
+
+  # Results: Table 5 and included-study characteristics
+  "03_Table5_Directness" = evidence_directness,
+  "04_Table5_Lit_Types" = literature_types,
+  "05_Table5_Themes" = primary_themes,
+  "06_Table5_Maturity" = correction_maturity,
+  "07_Table5_Evidence_Roles" = evidence_roles,
+  "08_Publication_Years" = publication_years,
+  "09_Research_Objects" = research_objects,
+  "10_Database_Sources" = database_sources,
+  "11_Methods" = methodological_techniques,
+
+  # Results: Figure 2 EBL appraisal
+  "12_Figure2_EBL_Status" = ebl_status,
+  "13_Figure2_EBL_Domains" = ebl_domain_summary,
+  "14_EBL_Quality_Bands" = ebl_quality_bands,
+
+  # Results: Table 6 and Figure 4
+  "15_Table6_RQ_Coverage" = rq_coverage,
+  "16_Figure4_RQ_Directness" = rq_directness_long,
+
+  # Results: Table 7, RQ5, and supporting evidence
+  "17_Table7_RQ4_Strategies" = rq4_strategies,
+  "18_All_Finding_Strategies" = finding_strategy,
+  "19_RQ5_Priorities" = rq5_priorities,
+  "20_Core_Contextual" = contribution_summary,
+  "21_Code_Level_Evidence" = code_level_evidence,
+
+  # Reproducibility audits
+  "22_Input_Audit" = audit_checks,
+  "23_S7_Audit" = map_checks,
+  "24_FullText_Agreement" = full_text_agreement,
+  "25_EBL_Agreement" = ebl_agreement,
+  "26_EBL_Adjudication" = ebl_adjudication_summary
+)
+
+write_xlsx(
+  chapter4_tables,
+  path = file.path(
+    table_dir,
+    "Chapter4_Analysis_Tables.xlsx"
+  )
+)
+message(
+  "Final Excel saved to: ",
+  file.path(table_dir, "Chapter4_Analysis_Tables.xlsx")
+)
+```

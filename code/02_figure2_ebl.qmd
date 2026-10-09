@@ -1,0 +1,330 @@
+---
+title: "Figure 2: EBL critical appraisal"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: true
+---
+
+```{r}
+# ============================================================
+# Figure 2: Critical appraisal of the included evidence
+#
+# Input:
+#   output/tables/Chapter4_Analysis_Tables.xlsx
+#   sheet: 13_Figure2_EBL_Domains
+# Output:
+#   output/figures/Figure_2_EBL_Critical_Appraisal.png
+#   output/figures/Figure_2_EBL_Critical_Appraisal.pdf
+# ============================================================
+
+required_packages <- c(
+  "here", "readxl", "dplyr", "ggplot2", "patchwork"
+)
+
+missing_packages <- required_packages[
+  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+
+if (length(missing_packages) > 0) {
+  stop(
+    paste0(
+      "Install the required packages before running this script: ",
+      paste(missing_packages, collapse = ", ")
+    )
+  )
+}
+
+library(here)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# ------------------------------------------------------------
+# 1. Relative input and output paths
+# ------------------------------------------------------------
+
+source_file <- here(
+  "output",
+  "tables",
+  "Chapter4_Analysis_Tables.xlsx"
+)
+
+figure_dir <- here("output", "figures")
+
+dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+
+if (!file.exists(source_file)) {
+  stop(
+    paste0(
+      "Input file not found: ", source_file,
+      "\nRun 01_chapter4_analysis.qmd before generating Figure 2."
+    )
+  )
+}
+
+# ------------------------------------------------------------
+# 2. Read the final EBL domain summary
+# ------------------------------------------------------------
+
+domain_raw <- read_excel(
+  path = source_file,
+  sheet = "13_Figure2_EBL_Domains"
+)
+
+required_columns <- c(
+  "Domain", "N", "Mean_pct", "Median_pct", "SD",
+  "Meets_75_n", "Meets_75_pct"
+)
+
+missing_columns <- setdiff(required_columns, names(domain_raw))
+
+if (length(missing_columns) > 0) {
+  stop(
+    paste0(
+      "Required Figure 2 columns are missing: ",
+      paste(missing_columns, collapse = ", ")
+    )
+  )
+}
+
+domain_levels <- c(
+  "A. Population / Sample",
+  "B. Data Collection",
+  "C. Study Design",
+  "D. Results",
+  "Overall"
+)
+
+if (
+  !setequal(as.character(domain_raw$Domain), domain_levels) ||
+    anyDuplicated(as.character(domain_raw$Domain)) > 0
+) {
+  stop("Figure 2 domain rows do not match the EBL domain specification.")
+}
+
+domain_summary <- domain_raw |>
+  mutate(
+    Domain = factor(
+      Domain,
+      levels = domain_levels
+    ),
+    Mean = as.numeric(Mean_pct),
+    Median = as.numeric(Median_pct)
+  ) |>
+  arrange(Domain) |>
+  mutate(
+    Mean_label = sprintf("Mean %.1f%%", Mean),
+    Detail_label = sprintf(
+      "Median %.1f%%  |  SD %.1f  |  n=%d",
+      Median,
+      SD,
+      N
+    ),
+    Threshold_label = sprintf(
+      "%d/%d (%.1f%%)",
+      Meets_75_n,
+      N,
+      Meets_75_pct
+    )
+  )
+
+panel_b_limit <- max(
+  100,
+  max(domain_summary$Meets_75_pct, na.rm = TRUE) + 15
+)
+
+print(domain_summary)
+
+# ------------------------------------------------------------
+# 4. Figure settings
+# ------------------------------------------------------------
+
+blue <- "#2F6F9F"
+dark_blue <- "#163A59"
+light_blue <- "#DCEAF4"
+orange <- "#D97706"
+grid_colour <- "#D9E1E8"
+
+base_theme <- theme_minimal(base_family = "Arial", base_size = 11) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(
+      colour = grid_colour,
+      linewidth = 0.4
+    ),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(colour = "#111111", size = 10.5),
+    axis.text.x = element_text(colour = "#445A6F"),
+    plot.title = element_text(
+      face = "bold",
+      size = 13,
+      colour = "#111111"
+    ),
+    plot.title.position = "panel",
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.margin = margin(8, 12, 8, 8)
+  )
+
+# ------------------------------------------------------------
+# 5. Panel A: domain score profile
+# ------------------------------------------------------------
+
+plot_a <- ggplot(domain_summary, aes(y = Domain)) +
+  geom_col(
+    aes(x = Mean),
+    width = 0.58,
+    fill = light_blue,
+    colour = blue,
+    linewidth = 0.8
+  ) +
+  geom_errorbar(
+    aes(
+      xmin = pmax(Mean - SD, 0),
+      xmax = pmin(Mean + SD, 100),
+      x = Mean
+    ),
+    width = 0.13,
+    colour = dark_blue,
+    linewidth = 0.8
+  ) +
+  geom_point(
+    aes(x = Median, colour = "Median"),
+    shape = 18,
+    size = 3.4
+  ) +
+  geom_vline(
+    xintercept = 75,
+    linetype = "dashed",
+    colour = "#B45309",
+    linewidth = 0.7
+  ) +
+  annotate(
+    "text",
+    x = 76,
+    y = 5.45,
+    label = "75% threshold",
+    hjust = 0,
+    colour = "#92400E",
+    size = 3.2
+  ) +
+  geom_text(
+    aes(x = 2, label = Mean_label),
+    hjust = 0,
+    colour = "#102A43",
+    fontface = "bold",
+    size = 3.4
+  ) +
+  geom_text(
+    aes(x = 106, label = Detail_label),
+    hjust = 0,
+    colour = "#334E68",
+    size = 3.2
+  ) +
+  scale_colour_manual(values = c(Median = orange)) +
+  scale_x_continuous(
+    limits = c(0, 155),
+    breaks = c(0, 25, 50, 75, 100),
+    expand = expansion(mult = c(0, 0))
+  ) +
+  scale_y_discrete(limits = rev(levels(domain_summary$Domain))) +
+  labs(
+    title = "A. Domain validity scores",
+    x = "Validity score (%)"
+  ) +
+  base_theme
+
+# ------------------------------------------------------------
+# 6. Panel B: studies meeting the 75% threshold
+# ------------------------------------------------------------
+
+plot_b <- ggplot(domain_summary, aes(y = Domain)) +
+  geom_col(
+    aes(x = Meets_75_pct),
+    width = 0.58,
+    fill = blue
+  ) +
+  geom_text(
+    aes(
+      x = Meets_75_pct + 1.8,
+      label = Threshold_label
+    ),
+    hjust = 0,
+    colour = dark_blue,
+    fontface = "bold",
+    size = 3.4
+  ) +
+  scale_x_continuous(
+    limits = c(0, panel_b_limit),
+    breaks = c(0, 25, 50, 75, 100),
+    expand = expansion(mult = c(0, 0))
+  ) +
+  scale_y_discrete(
+    limits = rev(levels(domain_summary$Domain)),
+    labels = NULL
+  ) +
+  labs(
+    title = "B. Studies meeting the 75% threshold",
+    x = "Studies meeting threshold (%)"
+  ) +
+  base_theme +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+# ------------------------------------------------------------
+# 7. Combine and export
+# ------------------------------------------------------------
+
+final_figure <- plot_a + plot_b +
+  plot_layout(widths = c(1.35, 1), guides = "collect") +
+  plot_annotation(
+    title = paste0(
+      "Critical appraisal of the included evidence ",
+      "using the EBL checklist"
+    ),
+    theme = theme(
+      plot.title = element_text(
+        family = "Arial",
+        face = "bold",
+        size = 16,
+        colour = "#102A43",
+        hjust = 0
+      )
+    )
+  ) &
+  theme(legend.position = "bottom")
+
+ggsave(
+  filename = file.path(
+    figure_dir,
+    "Figure_2_EBL_Critical_Appraisal.png"
+  ),
+  plot = final_figure,
+  width = 15.2,
+  height = 5.8,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+ggsave(
+  filename = file.path(
+    figure_dir,
+    "Figure_2_EBL_Critical_Appraisal.pdf"
+  ),
+  plot = final_figure,
+  width = 15.2,
+  height = 5.8,
+  units = "in",
+  bg = "white"
+)
+
+message("Figure 2 saved to: ", figure_dir)
+```
