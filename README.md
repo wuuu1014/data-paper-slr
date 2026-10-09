@@ -1,5 +1,7 @@
 # Data Paper Systematic Literature Review
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23268970.svg)](https://doi.org/10.5281/zenodo.23268970)
+
 This repository contains the structured data, appraisal records,
 reviewer-agreement audit materials, analysis code, and reproducible
 outputs for a systematic literature review of data papers and
@@ -65,8 +67,12 @@ does not require separate installation.
 
 ## Citation
 
-The formal citation and Zenodo DOI will be added after the first
-archived release is published.
+Please cite the archived dataset and analysis materials as:
+
+Wu, Xueying. (2026). *Data Paper Systematic Literature Review:
+Structured Data, Critical Appraisal, and Reproducible Analysis*
+(Version 1.0.0) [Dataset]. Zenodo.
+https://doi.org/10.5281/zenodo.23268970
 
 ## Rights and reuse
 
