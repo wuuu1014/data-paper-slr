@@ -1,0 +1,334 @@
+---
+title: "Figure 4: S7 evidence-directness profile"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+# ============================================================
+# Figure 4: Evidence directness across RQ1-RQ4
+#
+# Input:
+#   output/tables/Chapter4_Analysis_Tables.xlsx
+#   sheet: 16_Figure4_RQ_Directness
+# Output:
+#   output/figures/Figure_4_S7_Evidence_Directness_Heatmap.png
+# ============================================================
+
+required_packages <- c(
+  "here", "readxl", "dplyr", "ggplot2", "scales", "grid"
+)
+
+missing_packages <- required_packages[
+  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+
+if (length(missing_packages) > 0) {
+  stop(
+    paste0(
+      "Install the required packages before rendering this file: ",
+      paste(missing_packages, collapse = ", ")
+    )
+  )
+}
+
+library(here)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(grid)
+
+# ------------------------------------------------------------
+# 1. Relative input and output paths
+# ------------------------------------------------------------
+
+source_file <- here(
+  "output",
+  "tables",
+  "Chapter4_Analysis_Tables.xlsx"
+)
+
+figure_dir <- here("output", "figures")
+dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+
+if (!file.exists(source_file)) {
+  stop(
+    paste0(
+      "Input file not found: ", source_file,
+      "\nRun 01_chapter4_analysis.qmd before generating Figure 4."
+    )
+  )
+}
+
+# ------------------------------------------------------------
+# 2. Read and validate the final Figure 4 data
+# ------------------------------------------------------------
+
+figure4_raw <- read_excel(
+  path = source_file,
+  sheet = "16_Figure4_RQ_Directness"
+)
+
+required_columns <- c(
+  "RQ", "Evidence_Directness", "Studies",
+  "RQ_Total", "Share_of_RQ"
+)
+
+missing_columns <- setdiff(required_columns, names(figure4_raw))
+
+if (length(missing_columns) > 0) {
+  stop(
+    paste0(
+      "Required Figure 4 columns are missing: ",
+      paste(missing_columns, collapse = ", ")
+    )
+  )
+}
+
+rq_levels <- c("RQ1", "RQ2", "RQ3", "RQ4")
+
+directness_levels <- c(
+  "Direct Data Paper / Data Journal",
+  "Adjacent research-data",
+  "Infrastructure / mechanism"
+)
+
+figure4_summary <- figure4_raw |>
+  transmute(
+    RQ = as.character(RQ),
+    Evidence_Directness = as.character(Evidence_Directness),
+    n = as.numeric(Studies),
+    Total = as.numeric(RQ_Total),
+    Percentage = as.numeric(Share_of_RQ)
+  ) |>
+  filter(RQ %in% rq_levels)
+
+expected_grid <- expand.grid(
+  RQ = rq_levels,
+  Evidence_Directness = directness_levels,
+  stringsAsFactors = FALSE
+) |>
+  as_tibble()
+
+if (
+  nrow(anti_join(expected_grid, figure4_summary, by = c("RQ", "Evidence_Directness"))) > 0 ||
+    nrow(anti_join(figure4_summary, expected_grid, by = c("RQ", "Evidence_Directness"))) > 0
+) {
+  stop(
+    "Figure 4 does not contain exactly one row for every required ",
+    "RQ-by-directness combination."
+  )
+}
+
+if (any(!figure4_summary$Evidence_Directness %in% directness_levels)) {
+  stop("Figure 4 contains an unrecognized evidence-directness category.")
+}
+
+if (
+  n_distinct(
+    figure4_summary$RQ,
+    figure4_summary$Evidence_Directness
+  ) != nrow(expected_grid)
+) {
+  stop("Figure 4 contains duplicate RQ-by-directness rows.")
+}
+
+rq_validation <- figure4_summary |>
+  group_by(RQ) |>
+  summarise(
+    Categories = n(),
+    Calculated_Total = sum(n),
+    Reported_Total = first(Total),
+    Percentage_sum = sum(Percentage),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Total_Check = Calculated_Total == Reported_Total,
+    Percentage_Check = abs(Percentage_sum - 100) <= 0.01
+  )
+
+if (
+  any(!rq_validation$Total_Check) ||
+    any(!rq_validation$Percentage_Check) ||
+    any(rq_validation$Categories != length(directness_levels))
+) {
+  print(rq_validation)
+  stop("Figure 4 validation failed.")
+}
+
+figure4_summary <- figure4_summary |>
+  mutate(
+    RQ = factor(RQ, levels = rq_levels),
+    Evidence_Directness = factor(
+      Evidence_Directness,
+      levels = directness_levels
+    ),
+    Label = sprintf("%d\n(%.1f%%)", n, Percentage)
+  ) |>
+  arrange(RQ, Evidence_Directness)
+
+fill_max <- max(
+  10,
+  ceiling(max(figure4_summary$Percentage, na.rm = TRUE) / 10) * 10
+)
+
+print(
+  figure4_summary |>
+    select(
+      RQ,
+      Evidence_Directness,
+      n,
+      Total,
+      Percentage
+    )
+)
+
+# ------------------------------------------------------------
+# 3. Draw and export the heatmap
+# ------------------------------------------------------------
+
+rq_display_order <- c("RQ4", "RQ3", "RQ2", "RQ1")
+
+# Use a generic font family so the figure renders consistently across
+# macOS, Windows and Linux without requiring a separately registered font.
+plot_font <- "sans"
+
+figure4_heatmap <- ggplot(
+  figure4_summary,
+  aes(
+    x = Evidence_Directness,
+    y = RQ,
+    fill = Percentage
+  )
+) +
+  geom_tile(
+    colour = "white",
+    linewidth = 0.8
+  ) +
+  geom_text(
+    aes(
+      label = Label,
+      colour = Percentage >= 36
+    ),
+    family = plot_font,
+    size = 4.2,
+    fontface = "bold",
+    lineheight = 0.9
+  ) +
+  scale_y_discrete(
+    limits = rq_display_order,
+    expand = c(0, 0)
+  ) +
+  scale_x_discrete(
+    labels = c(
+      "Direct Data Paper /\nData Journal",
+      "Adjacent research-data",
+      "Infrastructure /\nmechanism"
+    ),
+    expand = c(0, 0)
+  ) +
+  scale_colour_manual(
+    values = c(
+      "TRUE" = "white",
+      "FALSE" = "#0B2742"
+    ),
+    guide = "none"
+  ) +
+  scale_fill_gradientn(
+    colours = c(
+      "#F5F9FC",
+      "#D1E3F0",
+      "#ABCDE4",
+      "#316996",
+      "#204F7A"
+    ),
+    limits = c(0, fill_max),
+    breaks = seq(0, fill_max, 10),
+    name = "Share of each RQ evidence pool (%)"
+  ) +
+  labs(
+    x = "Evidence category",
+    y = "Research question"
+  ) +
+  theme_minimal(
+    base_size = 11,
+    base_family = plot_font
+  ) +
+  theme(
+    text = element_text(
+      family = plot_font,
+      colour = "black"
+    ),
+    axis.text.x = element_text(
+      size = 10.5,
+      colour = "black",
+      lineheight = 0.9
+    ),
+    axis.text.y = element_text(
+      size = 11,
+      colour = "black"
+    ),
+    axis.title.x = element_text(
+      size = 10,
+      colour = "black",
+      margin = margin(t = 7)
+    ),
+    axis.title.y = element_text(
+      size = 10,
+      colour = "black",
+      margin = margin(r = 7)
+    ),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.title = element_text(
+      size = 9,
+      angle = 90,
+      vjust = 0.5,
+      hjust = 0.5,
+      lineheight = 0.9
+    ),
+    legend.text = element_text(
+      size = 8.5,
+      colour = "black"
+    ),
+    legend.spacing.x = unit(0.15, "cm"),
+    plot.margin = margin(
+      t = 3,
+      r = 8,
+      b = 6,
+      l = 6
+    )
+  ) +
+  guides(
+    fill = guide_colourbar(
+      title.position = "right",
+      title.hjust = 0.5,
+      barwidth = unit(0.45, "cm"),
+      barheight = unit(10, "cm"),
+      ticks = TRUE,
+      frame.colour = "grey40"
+    )
+  )
+
+print(figure4_heatmap)
+
+ggsave(
+  filename = file.path(
+    figure_dir,
+    "Figure_4_S7_Evidence_Directness_Heatmap.png"
+  ),
+  plot = figure4_heatmap,
+  width = 9.2,
+  height = 4.67,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+message("Figure 4 saved to: ", figure_dir)
+```

@@ -1,0 +1,747 @@
+---
+title: "Figure 3: Conceptual model"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: true
+---
+
+```{r}
+# ============================================================
+# Figure 3
+# Conceptual model of cross-system evaluation of Data Papers
+# and associated research data outputs
+#
+# Terminology-calibrated journal version
+#
+# Input:
+#   No external data file is required; the conceptual model is
+#   drawn directly from the definitions in this script.
+#
+# Output:
+#   output/figures/Figure_3_Conceptual_Model.png
+# ============================================================
+
+
+# ============================================================
+# 0. Restart R before running
+# ============================================================
+#
+# RStudio:
+# Session -> Restart R
+#
+# Then run this ENTIRE script.
+# ============================================================
+
+
+# ============================================================
+# 1. Package check
+# ============================================================
+
+required_packages <- c("here", "grid")
+
+missing_packages <- required_packages[
+  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+
+if (length(missing_packages) > 0) {
+  stop(
+    paste0(
+      "Install the required packages before running this script: ",
+      paste(missing_packages, collapse = ", ")
+    )
+  )
+}
+
+library(here)
+library(grid)
+
+
+# ============================================================
+# 2. Paths
+# ============================================================
+
+OUTPUT_DIR <- here("output", "figures")
+
+if (!dir.exists(OUTPUT_DIR)) {
+  dir.create(
+    OUTPUT_DIR,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+}
+
+if (!dir.exists(OUTPUT_DIR)) {
+  stop("Failed to create output directory.")
+}
+
+PNG_FILE <- file.path(
+  OUTPUT_DIR,
+  "Figure_3_Conceptual_Model.png"
+)
+
+
+# ============================================================
+# 3. Figure dimensions
+# ============================================================
+
+FIG_WIDTH_IN  <- 14
+FIG_HEIGHT_IN <- 6.1
+
+
+# ============================================================
+# 4. Colour palette
+# ============================================================
+
+COL_TEXT       <- "#202124"
+COL_MUTED      <- "#62666A"
+
+COL_BORDER     <- "#45484B"
+COL_LIGHT      <- "#B7BDC2"
+
+COL_PANEL      <- "#F6F7F8"
+COL_BOX        <- "#FFFFFF"
+
+COL_ACCENT     <- "#365F7D"
+COL_ACCENT_BG  <- "#EDF3F7"
+
+COL_OBJECT_BG  <- "#F4F7F9"
+COL_RQ4_BG     <- "#F7F7F7"
+COL_RQ5_BG     <- "#FAFAFA"
+
+
+# ============================================================
+# 5. Helper functions
+# ============================================================
+
+draw_round_box <- function(
+    x,
+    y,
+    width,
+    height,
+    fill = "white",
+    border = COL_BORDER,
+    lwd = 1.2,
+    lty = 1,
+    radius = 0.010
+) {
+  
+  grid.roundrect(
+    x = unit(x, "npc"),
+    y = unit(y, "npc"),
+    width = unit(width, "npc"),
+    height = unit(height, "npc"),
+    just = c("left", "bottom"),
+    r = unit(radius, "snpc"),
+    gp = gpar(
+      fill = fill,
+      col = border,
+      lwd = lwd,
+      lty = lty
+    )
+  )
+}
+
+
+draw_rq_tag <- function(
+    x_center,
+    y_bottom,
+    label
+) {
+  
+  TAG_W <- 0.048
+  TAG_H <- 0.034
+  
+  grid.roundrect(
+    x = unit(x_center, "npc"),
+    y = unit(y_bottom, "npc"),
+    width = unit(TAG_W, "npc"),
+    height = unit(TAG_H, "npc"),
+    just = c("centre", "bottom"),
+    r = unit(0.008, "snpc"),
+    gp = gpar(
+      fill = COL_ACCENT_BG,
+      col = NA
+    )
+  )
+  
+  grid.text(
+    label,
+    x = unit(x_center, "npc"),
+    y = unit(y_bottom + TAG_H / 2, "npc"),
+    gp = gpar(
+      fontsize = 8.3,
+      fontface = "bold",
+      col = COL_ACCENT,
+      fontfamily = "sans"
+    )
+  )
+}
+
+
+draw_dimension_box <- function(
+    x,
+    y,
+    width,
+    height,
+    title,
+    subtitle,
+    rq = NULL,
+    special = FALSE
+) {
+  
+  BOX_FILL <- if (special) COL_OBJECT_BG else COL_BOX
+  
+  draw_round_box(
+    x = x,
+    y = y,
+    width = width,
+    height = height,
+    fill = BOX_FILL,
+    border = COL_BORDER,
+    lwd = 1.25,
+    radius = 0.009
+  )
+  
+  if (!is.null(rq)) {
+    
+    draw_rq_tag(
+      x_center = x + width / 2,
+      y_bottom = y + height + 0.010,
+      label = rq
+    )
+  }
+  
+  grid.text(
+    title,
+    x = unit(x + width / 2, "npc"),
+    y = unit(y + height * 0.65, "npc"),
+    gp = gpar(
+      fontsize = 11.7,
+      fontface = "bold",
+      col = COL_TEXT,
+      fontfamily = "sans",
+      lineheight = 1.05
+    )
+  )
+  
+  grid.text(
+    subtitle,
+    x = unit(x + width / 2, "npc"),
+    y = unit(y + height * 0.27, "npc"),
+    gp = gpar(
+      fontsize = 9.0,
+      col = COL_MUTED,
+      fontfamily = "sans",
+      lineheight = 1.10
+    )
+  )
+}
+
+
+draw_strategy_box <- function(
+    x,
+    y,
+    width,
+    height,
+    label
+) {
+  
+  draw_round_box(
+    x = x,
+    y = y,
+    width = width,
+    height = height,
+    fill = "white",
+    border = COL_LIGHT,
+    lwd = 0.95,
+    radius = 0.006
+  )
+  
+  grid.text(
+    label,
+    x = unit(x + width / 2, "npc"),
+    y = unit(y + height / 2, "npc"),
+    gp = gpar(
+      fontsize = 8.8,
+      col = COL_TEXT,
+      fontfamily = "sans",
+      lineheight = 1.06
+    )
+  )
+}
+
+
+# ============================================================
+# 6. Main figure
+# ============================================================
+
+draw_figure3 <- function() {
+  
+  grid.newpage()
+  
+  grid.rect(
+    gp = gpar(
+      fill = "white",
+      col = NA
+    )
+  )
+  
+  
+  # ==========================================================
+  # Title
+  # ==========================================================
+  
+  grid.text(
+    paste0(
+      "Conceptual model of cross-system evaluation of ",
+      "Data Papers and associated research data outputs"
+    ),
+    x = unit(0.040, "npc"),
+    y = unit(0.958, "npc"),
+    just = "left",
+    gp = gpar(
+      fontsize = 18.5,
+      fontface = "bold",
+      col = COL_TEXT,
+      fontfamily = "sans"
+    )
+  )
+  
+  grid.text(
+    "Synthesis of the principal analytical dimensions identified across RQ1–RQ4",
+    x = unit(0.040, "npc"),
+    y = unit(0.914, "npc"),
+    just = "left",
+    gp = gpar(
+      fontsize = 10.8,
+      col = COL_MUTED,
+      fontfamily = "sans"
+    )
+  )
+  
+  
+  # ==========================================================
+  # Main analytical panel
+  # ==========================================================
+  
+  PANEL_X <- 0.020
+  PANEL_Y <- 0.475
+  PANEL_W <- 0.960
+  PANEL_H <- 0.335
+  
+  draw_round_box(
+    x = PANEL_X,
+    y = PANEL_Y,
+    width = PANEL_W,
+    height = PANEL_H,
+    fill = COL_PANEL,
+    border = COL_BORDER,
+    lwd = 1.20,
+    lty = 2,
+    radius = 0.013
+  )
+  
+  grid.text(
+    "Analytical dimensions of cross-system evaluation",
+    x = unit(0.045, "npc"),
+    y = unit(0.775, "npc"),
+    just = "left",
+    gp = gpar(
+      fontsize = 12.4,
+      fontface = "bold",
+      col = COL_TEXT,
+      fontfamily = "sans"
+    )
+  )
+  
+  
+  # ==========================================================
+  # Conceptual ordering
+  # ==========================================================
+  
+  grid.lines(
+    x = unit(c(0.073, 0.950), "npc"),
+    y = unit(c(0.615, 0.615), "npc"),
+    arrow = arrow(
+      type = "closed",
+      length = unit(0.12, "inches")
+    ),
+    gp = gpar(
+      col = COL_ACCENT,
+      lwd = 3.1,
+      lineend = "butt"
+    )
+  )
+  
+  
+  # ==========================================================
+  # Six analytical dimensions
+  # ==========================================================
+  
+  BOX_Y <- 0.535
+  BOX_W <- 0.135
+  BOX_H <- 0.180
+  
+  BOX_X <- c(
+    0.045,
+    0.200,
+    0.355,
+    0.510,
+    0.665,
+    0.820
+  )
+  
+  
+  # Evaluation objects
+  draw_dimension_box(
+    x = BOX_X[1],
+    y = BOX_Y,
+    width = BOX_W,
+    height = BOX_H,
+    title =
+      "Evaluation\nobjects",
+    subtitle =
+      "Data Paper\nAssociated dataset\nReuse-related publication",
+    rq = NULL,
+    special = TRUE
+  )
+  
+  
+  # RQ1
+  draw_dimension_box(
+    x = BOX_X[2],
+    y = BOX_Y,
+    width = BOX_W,
+    height = BOX_H,
+    title =
+      "Coverage and\nclassification",
+    subtitle =
+      "Indexing scope\nDocument-type classification\nRepresentation",
+    rq =
+      "RQ1"
+  )
+  
+  
+  # RQ2: metadata representation, discoverability, and linkage
+  draw_dimension_box(
+    x = BOX_X[3],
+    y = BOX_Y,
+    width = BOX_W,
+    height = BOX_H,
+    title =
+      "Metadata and\nlinkage",
+    subtitle =
+      "Persistent identifiers\nContextual metadata\nPublication–data relations",
+    rq =
+      "RQ2"
+  )
+  
+  
+  # RQ3: citation capture, entity resolution, and counting
+  draw_dimension_box(
+    x = BOX_X[4],
+    y = BOX_Y,
+    width = BOX_W,
+    height = BOX_H,
+    title =
+      "Citation capture and\nentity resolution",
+    subtitle =
+      "Formal/informal references\nIdentifier resolution\nDeduplication",
+    rq =
+      "RQ3"
+  )
+  
+  
+  # RQ3: temporal and normalization conditions affecting measurement
+  draw_dimension_box(
+    x = BOX_X[5],
+    y = BOX_Y,
+    width = BOX_W,
+    height = BOX_H,
+    title =
+      "Temporal and\nnormalization factors",
+    subtitle =
+      "Citation window\nIndexing lag\nNormalization",
+    rq =
+      "RQ3"
+  )
+  
+  
+  # Final measures
+  draw_dimension_box(
+    x = BOX_X[6],
+    y = BOX_Y,
+    width = BOX_W,
+    height = BOX_H,
+    title =
+      "Evaluation\nmeasures",
+    subtitle =
+      "Publication citations\nDataset citations\nEvidence of reuse",
+    rq = NULL
+  )
+  
+  
+  grid.text(
+    "Conceptual ordering",
+    x = unit(0.500, "npc"),
+    y = unit(0.492, "npc"),
+    gp = gpar(
+      fontsize = 8.2,
+      fontface = "italic",
+      col = COL_MUTED,
+      fontfamily = "sans"
+    )
+  )
+  
+  
+  # ==========================================================
+  # RQ4
+  # ==========================================================
+  
+  RQ4_X <- 0.020
+  RQ4_Y <- 0.125
+  RQ4_W <- 0.742
+  RQ4_H <- 0.285
+  
+  draw_round_box(
+    x = RQ4_X,
+    y = RQ4_Y,
+    width = RQ4_W,
+    height = RQ4_H,
+    fill = COL_RQ4_BG,
+    border = COL_BORDER,
+    lwd = 1.15,
+    radius = 0.012
+  )
+  
+  grid.text(
+    "Methodological responses and corrective strategies — RQ4",
+    x = unit(RQ4_X + 0.025, "npc"),
+    y = unit(RQ4_Y + RQ4_H - 0.045, "npc"),
+    just = "left",
+    gp = gpar(
+      fontsize = 12.4,
+      fontface = "bold",
+      col = COL_TEXT,
+      fontfamily = "sans"
+    )
+  )
+  
+  
+  # ==========================================================
+  # RQ4 strategies
+  # ==========================================================
+  
+  STRATEGY_W <- 0.215
+  STRATEGY_H <- 0.064
+  
+  SX1 <- 0.045
+  SX2 <- 0.282
+  SX3 <- 0.519
+  
+  SY_TOP    <- 0.235
+  SY_BOTTOM <- 0.155
+  
+  
+  draw_strategy_box(
+    x = SX1,
+    y = SY_TOP,
+    width = STRATEGY_W,
+    height = STRATEGY_H,
+    label =
+      "Metadata standardization\nand enrichment"
+  )
+  
+  draw_strategy_box(
+    x = SX2,
+    y = SY_TOP,
+    width = STRATEGY_W,
+    height = STRATEGY_H,
+    label =
+      "Structured linkage, graph integration,\nand interoperability"
+  )
+  
+  draw_strategy_box(
+    x = SX3,
+    y = SY_TOP,
+    width = STRATEGY_W,
+    height = STRATEGY_H,
+    label =
+      "Automated citation/reference detection,\ntracking, and entity resolution"
+  )
+  
+  draw_strategy_box(
+    x = SX1,
+    y = SY_BOTTOM,
+    width = STRATEGY_W,
+    height = STRATEGY_H,
+    label =
+      "Citation standardization\nand attribution practices"
+  )
+  
+  draw_strategy_box(
+    x = SX2,
+    y = SY_BOTTOM,
+    width = STRATEGY_W,
+    height = STRATEGY_H,
+    label =
+      "Credit allocation, metric normalization,\nand responsible assessment"
+  )
+  
+  draw_strategy_box(
+    x = SX3,
+    y = SY_BOTTOM,
+    width = STRATEGY_W,
+    height = STRATEGY_H,
+    label =
+      "Data Paper documentation, publication,\nand peer-review workflow reform"
+  )
+  
+  
+  # ==========================================================
+  # RQ5
+  # ==========================================================
+  
+  RQ5_X <- 0.795
+  RQ5_Y <- 0.125
+  RQ5_W <- 0.185
+  RQ5_H <- 0.285
+  
+  draw_round_box(
+    x = RQ5_X,
+    y = RQ5_Y,
+    width = RQ5_W,
+    height = RQ5_H,
+    fill = COL_RQ5_BG,
+    border = COL_ACCENT,
+    lwd = 1.25,
+    lty = 2,
+    radius = 0.012
+  )
+  
+  
+  grid.text(
+    "Synthesis of RQ1–RQ4",
+    x = unit(RQ5_X + RQ5_W / 2, "npc"),
+    y = unit(RQ5_Y + RQ5_H * 0.865, "npc"),
+    gp = gpar(
+      fontsize = 8.1,
+      fontface = "bold",
+      col = COL_ACCENT,
+      fontfamily = "sans"
+    )
+  )
+  
+  
+  grid.text(
+    "RQ5",
+    x = unit(RQ5_X + RQ5_W / 2, "npc"),
+    y = unit(RQ5_Y + RQ5_H * 0.715, "npc"),
+    gp = gpar(
+      fontsize = 10.8,
+      fontface = "bold",
+      col = COL_ACCENT,
+      fontfamily = "sans"
+    )
+  )
+  
+  
+  grid.text(
+    "Evidence gaps and\nfuture priorities",
+    x = unit(RQ5_X + RQ5_W / 2, "npc"),
+    y = unit(RQ5_Y + RQ5_H * 0.49, "npc"),
+    gp = gpar(
+      fontsize = 11.5,
+      fontface = "bold",
+      col = COL_TEXT,
+      fontfamily = "sans",
+      lineheight = 1.06
+    )
+  )
+  
+  
+  grid.text(
+    paste0(
+      "Diagnostic findings\n",
+      "Directness and applicability of evidence\n",
+      "Methodological maturity\n",
+      "Reported limitations and future directions"
+    ),
+    x = unit(RQ5_X + RQ5_W / 2, "npc"),
+    y = unit(RQ5_Y + RQ5_H * 0.225, "npc"),
+    gp = gpar(
+      fontsize = 7.8,
+      col = COL_MUTED,
+      fontfamily = "sans",
+      lineheight = 1.08
+    )
+  )
+}
+
+
+# ============================================================
+# 7. Export PNG
+# ============================================================
+
+png(
+  filename = PNG_FILE,
+  width = FIG_WIDTH_IN,
+  height = FIG_HEIGHT_IN,
+  units = "in",
+  res = 300,
+  bg = "white"
+)
+
+draw_figure3()
+
+dev.off()
+
+
+# ============================================================
+# 8. Validation
+# ============================================================
+
+if (!file.exists(PNG_FILE)) {
+  stop("PNG export failed.")
+}
+
+PNG_SIZE <- file.info(PNG_FILE)$size
+
+if (is.na(PNG_SIZE) || PNG_SIZE <= 0) {
+  stop("PNG exists but appears empty.")
+}
+
+cat("\n")
+cat("============================================================\n")
+cat("Figure 3 exported successfully\n")
+cat("============================================================\n\n")
+
+cat("PNG:\n", PNG_FILE, "\n\n")
+
+cat("PASS: Figure 3 generated successfully.\n")
+
+
+# ============================================================
+# 9. Suggested caption
+# ============================================================
+
+CAPTION <- paste0(
+  "Figure 3. Conceptual model of cross-system evaluation of Data Papers ",
+  "and associated research data outputs. The model synthesizes the principal ",
+  "analytical dimensions identified across RQ1–RQ4, including evaluation objects, ",
+  "coverage and classification, metadata and linkage, citation capture and entity ",
+  "resolution, temporal and normalization factors, and the resulting evaluation ",
+  "measures. Methodological responses identified under RQ4 address limitations ",
+  "across these dimensions. RQ5 draws on the combined findings of RQ1–RQ4, ",
+  "the directness and applicability of the available evidence, methodological ",
+  "maturity, and limitations and future directions reported in the included studies. ",
+  "The horizontal ordering is analytical and should not be interpreted as a ",
+  "validated causal pathway."
+)
+
+cat("\nSuggested caption:\n\n")
+cat(CAPTION)
+cat("\n")
+```
