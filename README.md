@@ -37,7 +37,24 @@ The analysis was conducted using R and Quarto.
 The formal citation and Zenodo DOI will be added after the first
 archived release is published.
 
-## License
+## Rights and reuse
 
-The code and data licensing information will be added before the
-repository is made public.
+Copyright © 2026 Wu Xueying. All rights reserved.
+
+The materials in this repository are provided for research
+transparency, verification, and reproducibility. Unless otherwise
+stated, no permission is granted for redistribution, modification,
+or commercial reuse.
+
+The screening decisions, coding records, critical-appraisal results,
+evidence maps, adjudication records, and project-generated outputs
+were prepared for this systematic literature review.
+
+Third-party bibliographic information, including article titles,
+author names, journal information, DOIs, and other publication
+metadata, remains subject to the rights and terms of the respective
+authors, publishers, database providers, and other rights holders.
+
+No article full texts, publisher PDFs, or copyrighted figures and
+tables from the included publications are distributed in this
+repository.
